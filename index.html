@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
     <link rel="stylesheet" href="https://unpkg.com/leaflet-geosearch@3.11.0/dist/geosearch.css"/>
 
+
+<!-- Estilos de mapa, botones, mensajes y barra de busqueda -->
     <style>
         :root {
             --primary-color: #6c9bcf; --primary-hover-color: #5a85b6;
@@ -23,24 +25,20 @@
             overflow: hidden;
         }
 
-        /* --- ESTILOS PARA EL BUSCADOR --- */
-        /* Posiciona el control del buscador en la esquina superior izquierda */
         .leaflet-control-geosearch.leaflet-bar {
             top: 15px;
             left: 15px;
         }
-        /* Contenedor principal del buscador */
         .leaflet-control-geosearch form {
-            display: flex; /* Activa Flexbox para alinear los elementos internos */
-            align-items: center; /* Centra verticalmente el icono y el input */
+            display: flex; 
+            align-items: center; 
             border: none;
             border-radius: 50px !important;
             box-shadow: 0 2px 8px var(--shadow-color);
-            height: 44px; /* Altura fija para un buen centrado */
-            overflow: hidden; /* ¡CLAVE! Evita que el input se desborde */
+            height: 44px; 
+            overflow: hidden; 
             background-color: var(--light-bg);
         }
-        /* Estilos para el campo de texto */
         .leaflet-control-geosearch input {
             border: none;
             outline: none;
@@ -48,11 +46,10 @@
             padding: 0 15px;
             font-size: 16px;
             width: 100%;
-            height: 100%; /* Ocupa toda la altura del contenedor */
-            box-sizing: border-box; /* El padding no aumenta el tamaño total */
+            height: 100%; 
+            box-sizing: border-box; 
         }
         
-        /* --- 2. POSICIÓN DEL BOTÓN DE EXPORTAR --- */
         #export-container {
             position: absolute;
             bottom: 20px;
@@ -135,8 +132,7 @@
             return super.search(options);
         }
     }
-
-    // --- 3. IMPLEMENTACIÓN DEL BUSCADOR  ---
+// --- Función busqueda de coordenadas ---
     const searchControl = new GeoSearch.GeoSearchControl({
         provider: new CoordsAndAddressProvider(),
         style: 'bar', 
@@ -154,14 +150,16 @@
     });
     
     let marcadoresCreados = [];
+    let marcadorSeleccionado = null; // <--Variable para el pin seleccionado
     const messageBox = document.getElementById('message-box');
     let messageTimer;
-
+// --- Función limpieza automatica de marcadores ---
     function limpiarMarcadores() {
         marcadoresCreados.forEach(marker => map.removeLayer(marker));
         marcadoresCreados = [];
+        marcadorSeleccionado = null;
     }
-
+// --- Función mostrar mensajes en pantalla ---
     function mostrarMensaje(texto, tipo, duracion = 5000) {
         clearTimeout(messageTimer);
         messageBox.textContent = texto;
@@ -180,7 +178,7 @@
         mostrarMensaje("Buscando edificios en el área...", "info");
         buscarEdificios(bbox);
     });
-
+// --- Función busqueda de edificios ---
     function buscarEdificios(bbox) {
         limpiarMarcadores();
         const overpassUrl = 'https://overpass-api.de/api/interpreter';
@@ -206,6 +204,17 @@
         .finally(() => featureGroup.clearLayers());
     }
 
+    // --- Función para gestionar la selección de un pin ---
+    function seleccionarPin(marker) {
+        if (marcadorSeleccionado) {
+            marcadorSeleccionado.setOpacity(1.0);
+        }
+        marcadorSeleccionado = marker;
+        if (marcadorSeleccionado) {
+            marcadorSeleccionado.setOpacity(0.7);
+        }
+    }
+    // --- Función para crear y editar pines creados ---
     function crearMarcadorEditable(latlng, nombre) {
         const marker = L.marker([latlng.lat, latlng.lon], { draggable: true }).addTo(map);
         const popupContent = document.createElement('div');
@@ -219,9 +228,45 @@
         };
         popupContent.appendChild(deleteButton);
         marker.bindPopup(popupContent);
+        
+
+        marker.on('click', () => {
+            seleccionarPin(marker);
+        });
+
         marcadoresCreados.push(marker);
     }
+    
+    // --- Deseleccionar el pin si se hace clic en el mapa ---
+    map.on('click', () => {
+        seleccionarPin(null);
+    });
 
+
+    // --- Teclado para eliminar pin y cambiar mapa ---
+    document.addEventListener('keydown', function(event) {
+        // Eliminar el pin seleccionado con la tecla Backspace
+        if (event.key === 'Backspace' && marcadorSeleccionado) {
+            event.preventDefault(); // Evita que el navegador retroceda la página
+            map.removeLayer(marcadorSeleccionado);
+            marcadoresCreados = marcadoresCreados.filter(m => m !== marcadorSeleccionado);
+            mostrarMensaje("Pin eliminado correctamente.", "info", 3000);
+            marcadorSeleccionado = null;
+        }
+
+        // Cambiar entre mapas con la tecla 'm'
+        if (event.key === 'm' || event.key === 'M') {
+            if (map.hasLayer(mapaCalles)) {
+                map.removeLayer(mapaCalles);
+                map.addLayer(mapaSatelital);
+            } else {
+                map.removeLayer(mapaSatelital);
+                map.addLayer(mapaCalles);
+            }
+        }
+    });
+
+    // --- Función de mensajes en pantalla y exportar a KMZ ---
     async function exportarKMZ() {
         if (marcadoresCreados.length === 0) {
             mostrarMensaje("No hay puntos para exportar.", "error");
